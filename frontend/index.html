@@ -7,7 +7,7 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     <title>Course Materials Assistant</title>
-    <link rel="stylesheet" href="style.css?v=9">
+    <link rel="stylesheet" href="style.css?v=10">
 </head>
 <body>
     <div class="container">
@@ -19,6 +19,9 @@
         <div class="main-content">
             <!-- Left Sidebar -->
             <aside class="sidebar">
+                <!-- New Chat Button -->
+                <button class="new-chat-btn" id="newChatBtn">+ NEW CHAT</button>
+
                 <!-- Course Stats -->
                 <div class="sidebar-section">
                     <details class="stats-collapsible">
@@ -49,6 +52,16 @@
                         </div>
                     </details>
                 </div>
+
+                <!-- Course Outlines -->
+                <div class="sidebar-section">
+                    <details class="outlines-collapsible">
+                        <summary class="outlines-header">Course Outlines</summary>
+                        <div class="outline-items" id="outlineItems">
+                            <span class="loading">Loading...</span>
+                        </div>
+                    </details>
+                </div>
             </aside>
 
             <!-- Main Chat Area -->
@@ -76,6 +89,6 @@
 
 
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <script src="script.js?v=9"></script>
+    <script src="script.js?v=10"></script>
 </body>
 </html>

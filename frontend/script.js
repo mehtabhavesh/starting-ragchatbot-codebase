@@ -5,7 +5,7 @@ const API_URL = '/api';
 let currentSessionId = null;
 
 // DOM elements
-let chatMessages, chatInput, sendButton, totalCourses, courseTitles;
+let chatMessages, chatInput, sendButton, totalCourses, courseTitles, newChatBtn, outlineItems;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -15,7 +15,9 @@ document.addEventListener('DOMContentLoaded', () => {
     sendButton = document.getElementById('sendButton');
     totalCourses = document.getElementById('totalCourses');
     courseTitles = document.getElementById('courseTitles');
-    
+    newChatBtn = document.getElementById('newChatBtn');
+    outlineItems = document.getElementById('outlineItems');
+
     setupEventListeners();
     createNewSession();
     loadCourseStats();
@@ -28,8 +30,10 @@ function setupEventListeners() {
     chatInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') sendMessage();
     });
-    
-    
+
+    // New chat button
+    newChatBtn.addEventListener('click', handleNewChat);
+
     // Suggested questions
     document.querySelectorAll('.suggested-item').forEach(button => {
         button.addEventListener('click', (e) => {
@@ -122,10 +126,17 @@ function addMessage(content, type, sources = null, isWelcome = false) {
     let html = `<div class="message-content">${displayContent}</div>`;
     
     if (sources && sources.length > 0) {
+        const sourcesList = sources.map(source => {
+            if (source.link) {
+                return `<a href="${escapeHtml(source.link)}" target="_blank" rel="noopener noreferrer" class="source-link">${escapeHtml(source.text)}</a>`;
+            }
+            return `<span class="source-text">${escapeHtml(source.text)}</span>`;
+        }).join('<br>');
+
         html += `
             <details class="sources-collapsible">
                 <summary class="sources-header">Sources</summary>
-                <div class="sources-content">${sources.join(', ')}</div>
+                <div class="sources-content">${sourcesList}</div>
             </details>
         `;
     }
@@ -152,21 +163,46 @@ async function createNewSession() {
     addMessage('Welcome to the Course Materials Assistant! I can help you with questions about courses, lessons and specific content. What would you like to know?', 'assistant', null, true);
 }
 
+// Handle new chat button click
+async function handleNewChat() {
+    try {
+        // Request new session from backend
+        const response = await fetch(`${API_URL}/session/new`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await response.json();
+        currentSessionId = data.session_id;
+
+        // Clear chat messages from DOM
+        chatMessages.innerHTML = '';
+
+        // Add welcome message
+        addMessage('Welcome to the Course Materials Assistant! I can help you with questions about courses, lessons and specific content. What would you like to know?', 'assistant', null, true);
+
+        // Clear and focus input
+        chatInput.value = '';
+        chatInput.focus();
+    } catch (error) {
+        console.error('Failed to create new session:', error);
+    }
+}
+
 // Load course statistics
 async function loadCourseStats() {
     try {
         console.log('Loading course stats...');
         const response = await fetch(`${API_URL}/courses`);
         if (!response.ok) throw new Error('Failed to load course stats');
-        
+
         const data = await response.json();
         console.log('Course data received:', data);
-        
+
         // Update stats in UI
         if (totalCourses) {
             totalCourses.textContent = data.total_courses;
         }
-        
+
         // Update course titles
         if (courseTitles) {
             if (data.course_titles && data.course_titles.length > 0) {
@@ -177,7 +213,27 @@ async function loadCourseStats() {
                 courseTitles.innerHTML = '<span class="no-courses">No courses available</span>';
             }
         }
-        
+
+        // Update course outlines section
+        if (outlineItems) {
+            if (data.course_titles && data.course_titles.length > 0) {
+                outlineItems.innerHTML = data.course_titles
+                    .map(title => `<button class="outline-item" data-course="${escapeHtml(title)}">${escapeHtml(title)}</button>`)
+                    .join('');
+
+                // Add click handlers for outline buttons
+                document.querySelectorAll('.outline-item').forEach(button => {
+                    button.addEventListener('click', (e) => {
+                        const courseTitle = e.target.getAttribute('data-course');
+                        chatInput.value = `What is the outline of the "${courseTitle}" course?`;
+                        sendMessage();
+                    });
+                });
+            } else {
+                outlineItems.innerHTML = '<span class="no-courses">No courses available</span>';
+            }
+        }
+
     } catch (error) {
         console.error('Error loading course stats:', error);
         // Set default values on error
@@ -186,6 +242,9 @@ async function loadCourseStats() {
         }
         if (courseTitles) {
             courseTitles.innerHTML = '<span class="error">Failed to load courses</span>';
+        }
+        if (outlineItems) {
+            outlineItems.innerHTML = '<span class="error">Failed to load courses</span>';
         }
     }
 }

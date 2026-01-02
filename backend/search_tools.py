@@ -89,29 +89,111 @@ class CourseSearchTool(Tool):
         """Format search results with course and lesson context"""
         formatted = []
         sources = []  # Track sources for the UI
-        
+
         for doc, meta in zip(results.documents, results.metadata):
             course_title = meta.get('course_title', 'unknown')
             lesson_num = meta.get('lesson_number')
-            
+
             # Build context header
             header = f"[{course_title}"
             if lesson_num is not None:
                 header += f" - Lesson {lesson_num}"
             header += "]"
-            
-            # Track source for the UI
-            source = course_title
+
+            # Build source text for the UI
+            source_text = course_title
             if lesson_num is not None:
-                source += f" - Lesson {lesson_num}"
-            sources.append(source)
-            
+                source_text += f" - Lesson {lesson_num}"
+
+            # Get lesson link, fall back to course link if not available
+            link = None
+            if lesson_num is not None:
+                link = self.store.get_lesson_link(course_title, lesson_num)
+            if not link:
+                link = self.store.get_course_link(course_title)
+
+            sources.append({"text": source_text, "link": link})
+
             formatted.append(f"{header}\n{doc}")
-        
+
         # Store sources for retrieval
         self.last_sources = sources
-        
+
         return "\n\n".join(formatted)
+
+class CourseOutlineTool(Tool):
+    """Tool for retrieving course outline information"""
+
+    def __init__(self, vector_store: VectorStore):
+        self.store = vector_store
+        self.last_sources = []
+
+    def get_tool_definition(self) -> Dict[str, Any]:
+        return {
+            "name": "get_course_outline",
+            "description": "Get the complete outline for a course including course title, course link, and all lessons with their numbers and titles",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "course_title": {
+                        "type": "string",
+                        "description": "The course title to get the outline for (partial matches work)"
+                    }
+                },
+                "required": ["course_title"]
+            }
+        }
+
+    def execute(self, course_title: str) -> str:
+        """
+        Execute the outline tool with given course title.
+
+        Args:
+            course_title: The course to get outline for
+
+        Returns:
+            Formatted course outline or error message
+        """
+        # Resolve the course name using semantic matching
+        resolved_title = self.store._resolve_course_name(course_title)
+
+        if not resolved_title:
+            return f"No course found matching '{course_title}'"
+
+        # Get all courses metadata and find the matching one
+        all_courses = self.store.get_all_courses_metadata()
+
+        for course in all_courses:
+            if course.get('title') == resolved_title:
+                return self._format_outline(course)
+
+        return f"Course outline not found for '{resolved_title}'"
+
+    def _format_outline(self, course: Dict[str, Any]) -> str:
+        """Format course outline with title, link, and lessons"""
+        title = course.get('title', 'Unknown')
+        link = course.get('course_link', 'No link available')
+        lessons = course.get('lessons', [])
+
+        # Store source for UI
+        self.last_sources = [{"text": title, "link": link}]
+
+        # Format the outline
+        lines = [
+            f"Course: {title}",
+            f"Link: {link}",
+            "",
+            "Lessons:",
+            ""
+        ]
+
+        for lesson in lessons:
+            lesson_num = lesson.get('lesson_number', '?')
+            lesson_title = lesson.get('lesson_title', 'Untitled')
+            lines.append(f"  {lesson_num}. {lesson_title}")
+
+        return "\n".join(lines)
+
 
 class ToolManager:
     """Manages available tools for the AI"""
@@ -133,11 +215,22 @@ class ToolManager:
         return [tool.get_tool_definition() for tool in self.tools.values()]
     
     def execute_tool(self, tool_name: str, **kwargs) -> str:
-        """Execute a tool by name with given parameters"""
+        """Execute a tool by name with given parameters.
+
+        Args:
+            tool_name: Name of the tool to execute
+            **kwargs: Parameters to pass to the tool
+
+        Returns:
+            Tool execution result as string, or error message on failure
+        """
         if tool_name not in self.tools:
             return f"Tool '{tool_name}' not found"
-        
-        return self.tools[tool_name].execute(**kwargs)
+
+        try:
+            return self.tools[tool_name].execute(**kwargs)
+        except Exception as e:
+            return f"Error executing tool '{tool_name}': {str(e)}"
     
     def get_last_sources(self) -> list:
         """Get sources from the last search operation"""
